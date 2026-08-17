@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum LeadSource {
+  SITE
+  EMAIL
+  PHONE
+  REFERRAL
+  MANUAL
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum ActivityType {
+  NOTE
+  TASK
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// Inbound inquiry from a prospective client, before it becomes a real
+/// customer relationship. Converted leads keep pointers to the Account /
+/// Contact / Opportunity that were created for them.
+model Lead {
+  id          String     @id @default(uuid())
+  title       String
+  name        String
+  company     String?
+  email       String?
+  phone       String?
+  source      LeadSource
+  status      LeadStatus @default(NEW)
+  budget      Int?
+  venue       String?
+  description String?
+
+  convertedAccountId     String? @unique
+  convertedContactId     String? @unique
+  convertedOpportunityId String? @unique
+
+  convertedAccount     Account?     @relation(fields: [convertedAccountId], references: [id])
+  convertedContact     Contact?     @relation(fields: [convertedContactId], references: [id])
+  convertedOpportunity Opportunity? @relation("LeadConvertedOpportunity", fields: [convertedOpportunityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([source])
+  @@index([createdAt])
+}
+
+/// A client company (exhibition organizer, brand, exhibitor, etc.)
+model Account {
+  id          String  @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  website     String?
+  description String?
+
+  contacts           Contact[]
+  opportunities      Opportunity[]
+  convertedFromLeads Lead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+/// A person at an Account who the agency actually talks to.
+model Contact {
+  id        String  @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  position  String?
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  opportunities      Opportunity[]
+  convertedFromLeads Lead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([lastName, firstName])
+}
+
+/// A pipeline stage opportunities move through while still open.
+/// Final outcomes (won / lost) are tracked on Opportunity.status, not here,
+/// so stages are not duplicated as pseudo-statuses.
+model Stage {
+  id    String @id @default(uuid())
+  name  String
+  order Int    @unique
+
+  opportunities Opportunity[]
+
+  @@index([order])
+}
+
+/// A deal: a stand / space / brand-zone project being sold to an Account.
+model Opportunity {
+  id                String            @id @default(uuid())
+  name              String
+  amount            Int?
+  status            OpportunityStatus @default(OPEN)
+  description       String?
+  lostReason        String?
+  expectedCloseDate DateTime?
+
+  stageId String
+  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  activities        Activity[]
+  convertedFromLead Lead?      @relation("LeadConvertedOpportunity")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stageId])
+  @@index([status])
+  @@index([accountId])
+  @@index([contactId])
+}
+
+/// A note or task attached to an Opportunity.
+model Activity {
+  id      String       @id @default(uuid())
+  type    ActivityType
+  title   String
+  content String?
+  dueDate DateTime?
+  done    Boolean      @default(false)
+
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([opportunityId])
+  @@index([type])
+  @@index([dueDate])
+}

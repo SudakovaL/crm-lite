@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: crm-lite-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crmlite
+      POSTGRES_PASSWORD: crmlite
+      POSTGRES_DB: crmlite
+    ports:
+      - "15432:5432"
+    volumes:
+      - crm-lite-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crmlite -d crmlite"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  crm-lite-db-data:
